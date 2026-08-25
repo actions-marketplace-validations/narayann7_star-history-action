@@ -4,7 +4,7 @@ All notable changes to this action are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project aims
 to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.6] - 2026-08-26
 
 ### Fixed
 - The legend label no longer runs past its box, and the title no longer runs
@@ -14,16 +14,32 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   off by whatever font the browser picked. The legend box is now sized from
   text widths measured in the PNG font (resvg with the same font files), and
   the legend and title `<text>` carry `textLength` so any substitute font is
-  fitted into that width. The PNG is unchanged in look; every theme is rendered
-  with the same `font-family` so their layouts match. `RENDER_VERSION` is
-  bumped, so the first run after upgrade re-renders and commits even with flat
-  stars.
+  fitted into that width. Every theme is rendered with the same `font-family`
+  so their layouts match. `RENDER_VERSION` is bumped, so the first run after
+  upgrade re-renders and commits even with flat stars. ([#7])
 - The SVG now asks for a font stack (`xkcd, "Comic Neue", "Chalkboard SE",
   "Comic Sans MS", sans-serif`) instead of the bare `xkcd` family nobody has,
   so a browser substitutes a font close in width to the bundled Comic Neue and
   the `textLength` fitting above stays mild. Before, the substitute was the
   browser's default font, and a monospace default meant text compressed by
-  about a quarter. The PNG is unaffected.
+  about a quarter. The PNG is unaffected, since resvg skips families it has not
+  loaded. ([#7])
+- Callers whose `package.json` pins npm without a committed lockfile no longer
+  fail on the "Set up Node" step. `actions/setup-node` v5+ turns dependency
+  caching on by itself when no `cache` input is given, keyed off the *caller's*
+  `package.json` in `GITHUB_WORKSPACE` rather than the renderer's own tree under
+  `$ACTION_PATH`. The action now passes `package-manager-cache: false`, keeping
+  the v4 behaviour. ([#6])
+
+### Changed
+- `actions/checkout` and `actions/setup-node` bumped from v4 to v7, in the
+  action itself and in the repo's own workflows and examples. ([#6])
+
+### Compatibility
+- The rendered chart changes shape slightly: the legend box is now as wide as
+  the text it holds instead of the old per-character estimate, and legend and
+  title text is drawn at its measured width. Existing charts are regenerated on
+  the next run; no input or output of the action changed. ([#7])
 
 ## [1.0.5] - 2026-08-09
 
@@ -139,6 +155,10 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Triggers for push, cron schedule, and manual dispatch, with a documented
   own-repos scope and PAT guidance for repos the default token cannot read.
 
+[#7]: https://github.com/narayann7/star-history-action/pull/7
+[#6]: https://github.com/narayann7/star-history-action/pull/6
+
+[1.0.6]: https://github.com/narayann7/star-history-action/releases/tag/v1.0.6
 [1.0.5]: https://github.com/narayann7/star-history-action/releases/tag/v1.0.5
 [1.0.4]: https://github.com/narayann7/star-history-action/releases/tag/v1.0.4
 [1.0.3]: https://github.com/narayann7/star-history-action/releases/tag/v1.0.3
