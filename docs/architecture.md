@@ -84,11 +84,16 @@ How star-history-action works, end to end.
    │       ──► write --signature │   (used for change detection)
    └──────────────┬──────────────┘
                   ▼
+   ┌─────────────────────────────┐        ┌──────────────────────────┐
+   │ resolve PNG font: bundled   │ ─────► │  Google Fonts (only when  │
+   │ Comic Neue or --font-family │ ◄───── │  --font-family is set)    │
+   └──────────────┬──────────────┘        └──────────────────────────┘
+                  ▼
    ┌─────────────────────────────┐
-   │ JSDOM <svg> +               │
-   │ convertDataToChartData +    │   draw the chart into the svg node
-   │ XYChart(..., envType:node)  │
-   └──────────────┬──────────────┘
+   │ JSDOM <svg> +               │   draw the chart into the svg node;
+   │ convertDataToChartData +    │   legend box + title laid out from text
+   │ XYChart(..., measureText)   │   widths resvg measures in the PNG font,
+   └──────────────┬──────────────┘   pinned on the <text> as textLength
                   ▼
    ┌─────────────────────────────┐        ┌──────────────────────────┐
    │ inline external <image>     │ ─────► │  owner avatar (image/*,   │
@@ -146,6 +151,31 @@ The signature also covers the requested font and `RENDER_VERSION` in
 `render.ts`. Bump that constant whenever the drawing changes for a reason other
 than star data; otherwise a repo with flat stars keeps its old chart until the
 day rolls over.
+
+## Text widths without a font
+
+The SVG asks for the `xkcd` family but ships no `@font-face`, so each browser
+substitutes its own default font, and those differ in width (a monospace
+default is about 20% wider than the bundled Comic Neue). Upstream star-history
+sizes the legend box and places the title logo from a fixed per-character
+estimate, which a wide substitute overflows.
+
+`render.ts` therefore lays the chart out for one known font, the one the PNG is
+rasterized with: `textMeasure.ts` asks resvg for the width of each label in that
+font, the legend box is sized from those widths, and each legend label and the
+title carry `textLength` + `lengthAdjust="spacingAndGlyphs"`. A browser that
+substitutes another font scales it into the pinned width instead of spilling
+out; the PNG, drawn with the same font files, shows the text at its natural
+width. Every theme is rendered with the same `--font-family` so their layouts
+match.
+
+How much a browser has to scale depends on which font it substitutes, so the
+SVG asks for a stack rather than the bare `xkcd` family:
+`xkcd, "Comic Neue", "Chalkboard SE", "Comic Sans MS", sans-serif`. Measured
+against Comic Neue, Chalkboard SE (macOS) is about 6% wider on a legend label
+and 10% on the bold title, Comic Sans MS (Windows) 9% and 20%, Helvetica/Arial
+4% and 9%, whereas a monospace default is 35% wider. The stack does not affect
+the PNG: resvg skips families it has not loaded and uses the default font.
 
 ## 5. Data provenance
 

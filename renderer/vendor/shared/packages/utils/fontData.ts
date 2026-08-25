@@ -1,4 +1,4 @@
-// MODIFIED FROM UPSTREAM (see ../../../NOTICE.md).
+// MODIFIED FROM UPSTREAM (see ../../../../NOTICE.md).
 //
 // Upstream star-history ships a ~53 KB base64 "xkcd" web font here. That font
 // carries its own license, separate from star-history's MIT, and GitHub strips

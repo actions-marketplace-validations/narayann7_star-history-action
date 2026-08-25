@@ -66,6 +66,11 @@ jobs:
           grep -qi '<svg' /tmp/smoke.svg
           test -s /tmp/smoke.png
           head -c 4 /tmp/smoke.png | od -An -tx1 | tr -d ' \n' | grep -qi '89504e47'
+          # Legend and title text must carry the measured width (textLength),
+          # with the attribute's camelCase surviving JSDOM and svgo, so a
+          # browser's substitute font cannot overflow the legend box.
+          grep -q 'textLength="' /tmp/smoke.svg
+          ! grep -q 'textlength=' /tmp/smoke.svg
           echo "renderer smoke test OK"
 
       # Exercise the full shell flow (render-charts.sh + readme-embed.py) the way
@@ -91,6 +96,11 @@ jobs:
       # end-to-end retry loop against a mocked axios adapter. No network.
       - name: Retry unit test
         run: renderer/node_modules/.bin/tsx renderer/retry.test.ts
+
+      # Text measurement against the bundled Comic Neue: widths follow glyph
+      # shapes and size, bold resolves to the bold face. No network.
+      - name: Text-measure unit test
+        run: renderer/node_modules/.bin/tsx renderer/textMeasure.test.ts
 
       # font-family end to end: PNG renders with a Google font, a bad name falls
       # back to the bundled font without failing, empty input skips the fetch,

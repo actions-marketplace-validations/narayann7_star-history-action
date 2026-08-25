@@ -12,7 +12,7 @@ import { drawTitle, drawXLabel, drawYLabel } from "./utils/drawLabels"
 import drawLegend from "./utils/drawLegend"
 import { drawWatermark } from "./utils/drawWatermark"
 import getFormatTimeline, { getTimestampFormatUnit } from "./utils/getFormatTimeline"
-import { D3Selection, Position, LegendPosition, colors, darkColors } from "./types"
+import { D3Selection, Position, LegendPosition, TextMeasurer, colors, darkColors } from "./types"
 
 const margin = {
     top: 50,
@@ -64,6 +64,11 @@ export interface XYChartOptions {
     chartWidth?: number
     useLogScale?: boolean
     legendPosition?: LegendPosition
+    // MODIFIED FROM UPSTREAM (see ../../../NOTICE.md). Measures text in the PNG
+    // font; when set, the legend box and title are sized from real widths and
+    // each label is pinned to that width with textLength, so a viewer that
+    // substitutes another font (the SVG ships no @font-face) still fits.
+    measureText?: TextMeasurer
 }
 
 const getDefaultOptions = (transparent: boolean): XYChartOptions => {
@@ -221,9 +226,9 @@ const XYChart = (
 
     if (title) {
         if (uniq(datasets.map((d) => d.label.split("/")[0])).length === 1) {
-            drawTitle(d3Selection, title, datasets[0].logo, options.strokeColor, options.chartWidth)
+            drawTitle(d3Selection, title, datasets[0].logo, options.strokeColor, options.chartWidth, options.measureText)
         } else {
-            drawTitle(d3Selection, title, "", options.strokeColor, options.chartWidth)
+            drawTitle(d3Selection, title, "", options.strokeColor, options.chartWidth, options.measureText)
         }
     }
     if (xLabel) {
@@ -430,7 +435,8 @@ const XYChart = (
         backgroundColor: options.backgroundColor,
         legendPosition: options.legendPosition || "top-left",
         chartWidth,
-        chartHeight
+        chartHeight,
+        measureText: options.measureText
     })
 }
 

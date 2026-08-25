@@ -28,6 +28,7 @@ import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { fetchGoogleFontFiles } from "./googleFont";
 import { installRetry } from "./retry";
+import { createTextMeasurer } from "./textMeasure";
 
 // Comic Neue (SIL OFL) is vendored under fonts/ and pinned for PNG rasterization
 // so the PNG renders the same handwriting-style text on every machine, instead
@@ -40,6 +41,19 @@ const PNG_FONT_FILES = [
 ];
 const PNG_FONT_FAMILY = "Comic Neue";
 
+// font-family the SVG asks for. "xkcd" is upstream's embedded font, which this
+// build does not ship, so a browser substitutes; the rest of the stack steers
+// that substitution towards fonts close in width and style to Comic Neue, the
+// font the layout is measured in (see textMeasure.ts), so the textLength
+// fitting stays mild instead of squeezing a wide default. Measured against
+// Comic Neue at 15px/20px bold: Chalkboard SE (macOS) +6% label / +10% title,
+// Comic Sans MS (Windows, macOS) +9% / +20%, Helvetica/Arial +4% / +9%; a
+// monospace default, which Firefox falls to when the user picked one, is +35%.
+// "cursive" is left out: it maps to a script face (Apple Chancery) on macOS.
+// resvg skips names it has not loaded and rasterizes the PNG with
+// defaultFontFamily, so the stack does not change the PNG.
+const SVG_FONT_STACK = 'xkcd, "Comic Neue", "Chalkboard SE", "Comic Sans MS", sans-serif';
+
 // star-history fetches at most this many pages of stargazers per repo.
 const MAX_REQUEST_AMOUNT = 16;
 
@@ -47,8 +61,10 @@ const MAX_REQUEST_AMOUNT = 16;
 // (stripping a node, changing a default, upgrading the vendored renderer). It
 // feeds the signature below, so bumping it forces every consumer to re-render
 // and commit on the next run instead of waiting for a star change or a day
-// rollover. Version 2 dropped the "star-history.com" watermark.
-const RENDER_VERSION = 2;
+// rollover. Version 2 dropped the "star-history.com" watermark. Version 3 sizes
+// the legend box from measured text widths and pins legend and title text with
+// textLength, so a viewer's substitute font no longer overflows the box.
+const RENDER_VERSION = 3;
 
 // JSDOM lowercases camelCase SVG names; restore the ones D3's filter emits.
 // Copied from star-history backend/utils.ts.
@@ -59,7 +75,41 @@ function fixJsdomSvgCasing(svgContent: string): string {
     .replace(/filterunits/g, "filterUnits")
     .replace(/basefrequency/g, "baseFrequency")
     .replace(/xchannelselector/g, "xChannelSelector")
-    .replace(/ychannelselector/g, "yChannelSelector");
+    .replace(/ychannelselector/g, "yChannelSelector")
+    // Set by drawTitle on a <text> under the HTML-namespace root, where JSDOM
+    // lowercases attribute names. Matched with the "=" so a repo name that
+    // happens to contain the word is left alone.
+    .replace(/\btextlength=/g, "textLength=")
+    .replace(/\blengthadjust=/g, "lengthAdjust=");
+}
+
+// The font the PNG is rasterized with: the vendored Comic Neue, or the
+// requested Google font when it can be fetched. Resolved before the chart is
+// drawn, not just before the PNG, because the chart's text layout (legend box,
+// title) is measured in this font (see textMeasure.ts). On any fetch failure
+// keep the vendored font so a network hiccup never fails the run. `dir` is the
+// temp dir holding a downloaded font, for the caller to remove.
+async function resolvePngFont(
+  requestedFont: string
+): Promise<{ files: string[]; family: string; dir: string | null }> {
+  if (!requestedFont) return { files: PNG_FONT_FILES, family: PNG_FONT_FAMILY, dir: null };
+  const dir = mkdtempSync(join(tmpdir(), "sh-font-"));
+  try {
+    // fetched.family is the font's real internal name, read from its name
+    // table, so resvg's defaultFontFamily lookup matches the downloaded face
+    // instead of assuming the Google family string equals the compiled name.
+    const fetched = await fetchGoogleFontFiles(requestedFont, dir);
+    process.stderr.write(
+      `Using Google font "${requestedFont}" as "${fetched.family}" (${fetched.files.length} file(s))\n`
+    );
+    return { files: fetched.files, family: fetched.family, dir };
+  } catch (e) {
+    process.stderr.write(
+      `Google font "${requestedFont}" unavailable (${e}); falling back to ${PNG_FONT_FAMILY}\n`
+    );
+    rmSync(dir, { recursive: true, force: true });
+    return { files: PNG_FONT_FILES, family: PNG_FONT_FAMILY, dir: null };
+  }
 }
 
 // The chart draws the repo/owner logo as <image href="https://avatars...">.
@@ -188,6 +238,26 @@ async function main() {
     writeFileSync(args.signature, sig, "utf-8");
   }
 
+  const font = await resolvePngFont((args["font-family"] || "").trim());
+  try {
+    await render(args, { repoData, theme, type, width, output, font });
+  } finally {
+    // Remove the downloaded-font temp dir so repeated runs on a long-lived
+    // (self-hosted) runner do not accumulate orphaned dirs in the OS tmpdir.
+    if (font.dir) rmSync(font.dir, { recursive: true, force: true });
+  }
+}
+
+interface RenderParams {
+  repoData: any;
+  theme: "light" | "dark";
+  type: "Date" | "Timeline";
+  width: number;
+  output: string;
+  font: { files: string[]; family: string };
+}
+
+async function render(args: Record<string, string>, { repoData, theme, type, width, output, font }: RenderParams) {
   const dom = new JSDOM(`<!DOCTYPE html><body></body>`);
   const body = dom.window.document.querySelector("body")!;
   const svg = dom.window.document.createElement("svg") as unknown as SVGSVGElement;
@@ -209,6 +279,12 @@ async function main() {
     {
       xTickLabelType: type === "Date" ? "Date" : "Number",
       chartWidth: width,
+      fontFamily: SVG_FONT_STACK,
+      // Lay out the legend box and title from real text widths in the PNG
+      // font, and pin them with textLength. The SVG ships no @font-face, so a
+      // browser substitutes its own font; pinned widths keep that font inside
+      // the legend box and clear of the title logo (see textMeasure.ts).
+      measureText: createTextMeasurer(font.files, font.family),
     }
   );
 
@@ -254,43 +330,19 @@ async function main() {
     svg.querySelectorAll("filter").forEach((el) => el.remove());
     svg.querySelectorAll("[filter]").forEach((el) => el.removeAttribute("filter"));
     const pngSvg = optimize(fixJsdomSvgCasing(svg.outerHTML), { multipass: true }).data;
-    // Default to the vendored Comic Neue. If the user asked for a Google font,
-    // download it and use that instead; on any failure keep the vendored font
-    // so a network hiccup never fails the run.
-    let fontFiles = PNG_FONT_FILES;
-    let fontFamily = PNG_FONT_FAMILY;
-    let fontDir: string | null = null;
-    const requestedFont = (args["font-family"] || "").trim();
-    if (requestedFont) {
-      try {
-        fontDir = mkdtempSync(join(tmpdir(), "sh-font-"));
-        // fetched.family is the font's real internal name, read from its name
-        // table, so resvg's defaultFontFamily lookup matches the downloaded face
-        // instead of assuming the Google family string equals the compiled name.
-        const fetched = await fetchGoogleFontFiles(requestedFont, fontDir);
-        fontFiles = fetched.files;
-        fontFamily = fetched.family;
-        process.stderr.write(
-          `Using Google font "${requestedFont}" as "${fetched.family}" (${fetched.files.length} file(s))\n`
-        );
-      } catch (e) {
-        process.stderr.write(
-          `Google font "${requestedFont}" unavailable (${e}); falling back to ${PNG_FONT_FAMILY}\n`
-        );
-      }
-    }
     const resvg = new Resvg(pngSvg, {
       // Chart already draws an opaque background (transparent:false), but set an
       // explicit background so the PNG never ends up with an alpha fringe.
       background: theme === "dark" ? "#0d1117" : "#ffffff",
-      // The embedded @font-face <style> was stripped above. Pin the vendored
-      // Comic Neue font (loadSystemFonts:false) so the PNG is byte-stable across
-      // build machines; the chart's requested "xkcd" family is unavailable, so
-      // resvg falls back to defaultFontFamily below.
+      // The embedded @font-face <style> was stripped above. Pin the resolved
+      // font (loadSystemFonts:false) so the PNG is byte-stable across build
+      // machines; the chart's requested "xkcd" family is unavailable, so resvg
+      // falls back to defaultFontFamily below. Same files the layout was
+      // measured with, so the PNG text sits at its natural width.
       font: {
         loadSystemFonts: false,
-        fontFiles,
-        defaultFontFamily: fontFamily,
+        fontFiles: font.files,
+        defaultFontFamily: font.family,
       },
       // Render at 2x the logical width for a crisp result on hi-dpi displays.
       fitTo: { mode: "width", value: width * 2 },
@@ -299,10 +351,6 @@ async function main() {
     mkdirSync(dirname(args.png), { recursive: true });
     writeFileSync(args.png, pngBuf);
     process.stderr.write(`Wrote ${args.png} (${pngBuf.length} bytes)\n`);
-
-    // Remove the downloaded-font temp dir so repeated runs on a long-lived
-    // (self-hosted) runner do not accumulate orphaned dirs in the OS tmpdir.
-    if (fontDir) rmSync(fontDir, { recursive: true, force: true });
   }
 }
 

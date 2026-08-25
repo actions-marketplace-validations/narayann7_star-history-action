@@ -123,12 +123,16 @@ fi
 for theme in "${themes[@]}"; do
   [ "$theme" = "$probe" ] && continue
   echo "Rendering $REPOS ($theme)"
+  # --font-family here too, although only the probe writes a PNG: the legend
+  # box and title are laid out from text widths measured in that font, so every
+  # theme must use the same one or the SVGs would differ in layout.
   "$R/node_modules/.bin/tsx" "$R/render.ts" \
     --repos "$REPOS" \
     --theme "$theme" \
     --type "$TYPE" \
     --width "$WIDTH" \
-    --output "$TMP/$theme.svg"
+    --output "$TMP/$theme.svg" \
+    --font-family "${FONT_FAMILY:-}"
   if [ ! -s "$TMP/$theme.svg" ]; then
     echo "::error::Rendered SVG is empty for theme $theme"
     exit 1

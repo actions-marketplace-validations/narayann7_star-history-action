@@ -6,6 +6,12 @@ export type Position = "down_right" | "down_left" | "up_right" | "up_left"
 
 export type LegendPosition = "top-left" | "bottom-right"
 
+// MODIFIED FROM UPSTREAM (see ../../../NOTICE.md). Width in px of `text` drawn
+// at `fontSize` in the font the PNG is rasterized with. Supplied by render.ts
+// so the legend box and title are laid out for real widths instead of a
+// per-character estimate for the embedded xkcd font this build does not ship.
+export type TextMeasurer = (text: string, fontSize: number, fontWeight?: "normal" | "bold") => number
+
 export const colors = [
     "#dd4528", "#28a3dd", "#f3db52", "#ed84b5", "#4ab74e", "#9179c0", "#8e6d5a", "#f19839", "#949494",
     "#1a9988", "#c75dab", "#6a8e2f", "#d4583b", "#3767b0", "#e8a735", "#7c4dff", "#00897b", "#c2185b", "#5c6bc0", "#e67e22",
