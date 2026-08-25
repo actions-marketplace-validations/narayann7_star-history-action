@@ -1,6 +1,6 @@
-import { D3Selection } from "../types"
+import { D3Selection, TextMeasurer } from "../types"
 
-export const drawTitle = (selection: D3Selection, text: string, logoURL: string, color: string, chartWidth?: number) => {
+export const drawTitle = (selection: D3Selection, text: string, logoURL: string, color: string, chartWidth?: number, measureText?: TextMeasurer) => {
     let logoX: string | number = "38%",
         clipX: string | number = "39.5%"
     if (selection.node()?.getBoundingClientRect()) {
@@ -12,7 +12,14 @@ export const drawTitle = (selection: D3Selection, text: string, logoURL: string,
         clipX = chartWidth * 0.5 - 73
     }
 
-    selection.append("text").style("font-size", "20px").style("font-weight", "bold").style("fill", color).attr("x", "50%").attr("y", 30).attr("text-anchor", "middle").text(text)
+    const title = selection.append("text").style("font-size", "20px").style("font-weight", "bold").style("fill", color).attr("x", "50%").attr("y", 30).attr("text-anchor", "middle").text(text)
+    // MODIFIED FROM UPSTREAM (see ../../../../NOTICE.md). The logo sits at a fixed
+    // offset left of center that assumes the title's width in the embedded xkcd
+    // font. With no @font-face shipped, a wider substitute font ran the title
+    // under the logo, so pin the title to its width in the PNG font.
+    if (measureText) {
+        title.attr("textLength", measureText(text, 20, "bold")).attr("lengthAdjust", "spacingAndGlyphs")
+    }
     selection
         .append("svg")
         .append("defs")

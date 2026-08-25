@@ -12,7 +12,7 @@
 
 ## Local changes to the vendored copy
 
-The vendored tree is not a verbatim copy. We made two changes:
+The vendored tree is not a verbatim copy. We made three changes:
 
 1. **Removed unused files** that are not reachable from the renderer's entry
    points (`packages/xy-chart` and `common/chart`): `common/repo-data.ts`,
@@ -26,8 +26,21 @@ The vendored tree is not a verbatim copy. We made two changes:
    before writing the SVG, so the font is unused; we blank the data to avoid
    redistributing the font.
 
+3. **Added an optional `measureText` hook** (`packages/types.tsx`,
+   `packages/xy-chart.tsx`, `packages/utils/drawLegend.tsx`,
+   `packages/utils/drawLabels.tsx`). Upstream sizes the legend box and places
+   the title logo from a per-character estimate for its embedded xkcd font.
+   Since this build ships no font (change 2), every viewer substitutes its own,
+   and a wide one (Firefox with a monospace default) ran the legend label past
+   its box and the title under its logo. When `render.ts` passes a measurer
+   (widths from resvg with the PNG font, see `../textMeasure.ts`), the legend
+   box is sized from real widths and the legend and title `<text>` get
+   `textLength` + `lengthAdjust="spacingAndGlyphs"`, so any substitute font is
+   fitted into the same space. Without the hook the upstream code path is
+   unchanged. Every edit is marked `MODIFIED FROM UPSTREAM` in place.
+
 All other files under `vendor/shared/` are copied unchanged from the pinned
 commit.
 
 To update the vendored code, re-copy `shared/` from a newer star-history commit,
-re-apply the two changes above, and bump the pinned commit.
+re-apply the three changes above, and bump the pinned commit.

@@ -4,6 +4,27 @@ All notable changes to this action are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project aims
 to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- The legend label no longer runs past its box, and the title no longer runs
+  under the owner logo, in viewers whose substitute font is wider than the
+  bundled one (Firefox with a monospace default font, for example). The SVG
+  ships no `@font-face`, so upstream's fixed per-character width estimate was
+  off by whatever font the browser picked. The legend box is now sized from
+  text widths measured in the PNG font (resvg with the same font files), and
+  the legend and title `<text>` carry `textLength` so any substitute font is
+  fitted into that width. The PNG is unchanged in look; every theme is rendered
+  with the same `font-family` so their layouts match. `RENDER_VERSION` is
+  bumped, so the first run after upgrade re-renders and commits even with flat
+  stars.
+- The SVG now asks for a font stack (`xkcd, "Comic Neue", "Chalkboard SE",
+  "Comic Sans MS", sans-serif`) instead of the bare `xkcd` family nobody has,
+  so a browser substitutes a font close in width to the bundled Comic Neue and
+  the `textLength` fitting above stays mild. Before, the substitute was the
+  browser's default font, and a monospace default meant text compressed by
+  about a quarter. The PNG is unaffected.
+
 ## [1.0.5] - 2026-08-09
 
 ### Changed

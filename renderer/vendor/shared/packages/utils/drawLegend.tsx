@@ -1,4 +1,4 @@
-import { D3Selection, LegendPosition } from "../types"
+import { D3Selection, LegendPosition, TextMeasurer } from "../types"
 import uniq from "lodash/uniq"
 
 interface DrawLegendConfig {
@@ -12,15 +12,18 @@ interface DrawLegendConfig {
     legendPosition: LegendPosition
     chartWidth: number
     chartHeight: number
+    // MODIFIED FROM UPSTREAM (see ../../../../NOTICE.md), optional.
+    measureText?: TextMeasurer
 }
 
-const drawLegend = (selection: D3Selection, { items, strokeColor, backgroundColor, legendPosition, chartWidth, chartHeight }: DrawLegendConfig) => {
+const drawLegend = (selection: D3Selection, { items, strokeColor, backgroundColor, legendPosition, chartWidth, chartHeight, measureText }: DrawLegendConfig) => {
     const legendXPadding = 7
     const legendYPadding = 6
     const xkcdCharWidth = 7
     const xkcdCharHeight = 20
     const colorBlockWidth = 8
     const logoSize = 14
+    const fontSize = 15
 
     const legend = selection.append("svg")
     const backgroundLayer = legend.append("svg")
@@ -34,8 +37,20 @@ const drawLegend = (selection: D3Selection, { items, strokeColor, backgroundColo
         maxTextLength = Math.max(item.text.length, maxTextLength)
     })
 
+    // MODIFIED FROM UPSTREAM (see ../../../../NOTICE.md). Upstream sizes the box
+    // from a per-character estimate for its embedded xkcd font. This build ships
+    // no @font-face, so every viewer substitutes its own font and a wide one
+    // (Firefox with a monospace default) ran the label past the box. With a
+    // measurer, size the box from each label's real width in the PNG font and
+    // pin that width onto the <text> as textLength below, so any substitute font
+    // is fitted into the same space. Without one, keep upstream's estimate.
+    const textOffsetX = legendXPadding + colorBlockWidth + (shouldDrawLogo ? legendXPadding + logoSize : 0) + 6
+    const textWidths = measureText ? items.map((item) => measureText(item.text, fontSize)) : []
+
     let bboxWidth = maxTextLength * (xkcdCharWidth + 0.5) + colorBlockWidth + legendXPadding
-    const backgroundWidth = Math.max(bboxWidth + legendXPadding * 2, maxTextLength * xkcdCharWidth + colorBlockWidth + legendXPadding * 2 + 6 + (shouldDrawLogo ? legendXPadding + logoSize : 0))
+    const backgroundWidth = measureText
+        ? textOffsetX + Math.max(0, ...textWidths) + legendXPadding
+        : Math.max(bboxWidth + legendXPadding * 2, maxTextLength * xkcdCharWidth + colorBlockWidth + legendXPadding * 2 + 6 + (shouldDrawLogo ? legendXPadding + logoSize : 0))
     const backgroundHeight = items.length * xkcdCharHeight + legendYPadding * 2
 
     // Calculate position based on legendPosition
@@ -78,13 +93,19 @@ const drawLegend = (selection: D3Selection, { items, strokeColor, backgroundColo
                 .attr("clip-path", `url(#clip-circle-title-${item.text})`)
         }
         // draw text
-        textLayer
+        const label = textLayer
             .append("text")
-            .style("font-size", "15px")
+            .style("font-size", `${fontSize}px`)
             .style("fill", strokeColor)
-            .attr("x", legendX + legendXPadding + colorBlockWidth + (shouldDrawLogo ? legendXPadding + logoSize : 0) + 6)
+            .attr("x", legendX + textOffsetX)
             .attr("y", legendY + 12 + xkcdCharHeight * i + 8)
             .text(item.text)
+        if (measureText) {
+            // spacingAndGlyphs scales the glyphs to the pinned width; the default
+            // (spacing only) would leave a wide substitute font's letters
+            // overlapping each other.
+            label.attr("textLength", textWidths[i]).attr("lengthAdjust", "spacingAndGlyphs")
+        }
     })
 
     // Update bboxWidth with actual width if possible
